@@ -1,0 +1,106 @@
+name: PyPi to Artifactory
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  RELEASE_NOTES: |
+    I've never a multi-line environment variable in GitHub Workflows:
+    - There's a first time for every thing ;-)
+  AWS_REGION: us-east-2
+  AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DEVOPS_TF_AWS_SECRET_ACCESS_KEY }}
+  JF_ARTIFACTORY_1: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
+  
+
+jobs:
+  sanityChecks:
+    name: Sanity Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Get Module Name
+        id: module_name
+        run: echo "::set-output name=module_name::$(cat setup.py | egrep -o \"name='(.*)'\" | awk -F \"'\" '{print $2}'"
+      
+      - name: Get Version
+        id: verion
+        run: echo "::set-output name=module_name::$(cat setup.py | egrep -o \"version='(.*)'\" | awk -F \"'\" '{print $2}'"
+  
+  release:
+    needs: sanityChecks
+    name: Create Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ env.RELEASE_NOTES }}
+          draft: false
+          prerelease: false
+  
+  createIngress:
+    needs: release
+    name: Create Ingress Rule for Artifactory
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Configure AWS Region
+        run: echo "AWS_DEFAULT_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
+
+      - name: Set IP
+        run: |
+          echo 'RUNNER_IP<<EOF' >> $GITHUB_ENV
+          curl https://checkip.amazonaws.com >> $GITHUB_ENV
+          echo 'EOF' >> $GITHUB_ENV
+          echo ${{ env.RUNNER_IP }}
+
+      - name: Add Ingress Rule
+        run: aws ec2 authorize-security-group-ingress --group-id ${{ secrets.SECURITY_GROUP_ID }} --protocol tcp --port 443 --cidr ${{ env.RUNNER_IP }}/32
+
+  buildPackage:
+    needs: createIngress
+    name: Build Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v1.2.0
+
+      - name: Build Package
+        run: |
+          python3 -m pip install --upgrade build
+          python3 -m build
+          python3 setup.py sdist bdist_wheel
+
+  artifactoryUpload:
+    needs: buildPackage
+    name: Build Package
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Setup JFrog CLI
+        uses: jfrog/setup-jfrog-cli@v1
+      
+      - name: Upload Package to Artifactory
+        run: jfrog rt u dist/ pypi/ --build-name='${{ env.JFROG_CLI_BUILD_NAME }}' --build-number=${{ env.JFROG_CLI_BUILD_NUMBER }} --module=vmd_core
+
+  revokeIngress:
+    needs: artifactoryUpload
+    name: Revoke Ingress Rule for Artifactory
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Revoke Access
+        run: aws ec2 revoke-security-group-ingress --group-id ${{ secrets.SECURITY_GROUP_ID }} --protocol tcp --port 443 --cidr ${{ env.RUNNER_IP }}/32
