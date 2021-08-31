@@ -1,0 +1,8 @@
+{
+    "name": "CodeQL for Python",
+    "description": "CodeQL for Python",
+    "iconName": "python",
+    "categories": [
+        "Python"
+    ]
+}
