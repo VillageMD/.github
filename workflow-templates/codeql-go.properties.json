@@ -1,0 +1,8 @@
+{
+    "name": "CodeQL for Go",
+    "description": "CodeQL for Go",
+    "iconName": "go",
+    "categories": [
+        "Go"
+    ]
+}
