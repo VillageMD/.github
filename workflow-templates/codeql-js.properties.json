@@ -1,0 +1,8 @@
+{
+    "name": "CodeQL for Javascript",
+    "description": "CodeQL for Javascript",
+    "iconName": "js",
+    "categories": [
+        "JavaScript"
+    ]
+}
