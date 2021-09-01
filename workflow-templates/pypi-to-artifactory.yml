@@ -12,6 +12,7 @@ env:
   AWS_REGION: us-east-2
   AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.DEVOPS_TF_AWS_SECRET_ACCESS_KEY }}
+  SECURITY_GROUP_ID: sg-deadbeef
   JF_ARTIFACTORY_1: ${{ secrets.ARTIFACTORY_ACCESS_TOKEN }}
   
 
@@ -19,15 +20,27 @@ jobs:
   sanityChecks:
     name: Sanity Checks
     runs-on: ubuntu-latest
+    outputs:
+      module_name: ${{ steps.module.outputs.name }}
 
     steps:
       - name: Get Module Name
-        id: module_name
-        run: echo "::set-output name=module_name::$(cat setup.py | egrep -o \"name='(.*)'\" | awk -F \"'\" '{print $2}'"
+        id: module
+        run: echo "::set-output name=name::$(cat setup.py | egrep -o \"name='(.*)'\" | awk -F \"'\" '{print $2}'"
       
-      - name: Get Version
-        id: verion
-        run: echo "::set-output name=module_name::$(cat setup.py | egrep -o \"version='(.*)'\" | awk -F \"'\" '{print $2}'"
+      - name: Get Package Version
+        id: package
+        run: echo "::set-output name=version::$(cat setup.py | egrep -o \"version='(.*)'\" | awk -F \"'\" '{print $2}'"
+
+      - name: Get Tag Version
+        id: tag
+        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
+
+      - name: Version Check
+        if: ${{ steps.package.outputs.version != steps.tag.outputs.version }}
+        run: |
+          echo " [ ERROR ] Release tag and version found in setup.py are not the same."
+          exit 1
   
   release:
     needs: sanityChecks
@@ -67,7 +80,12 @@ jobs:
           echo ${{ env.RUNNER_IP }}
 
       - name: Add Ingress Rule
-        run: aws ec2 authorize-security-group-ingress --group-id ${{ secrets.SECURITY_GROUP_ID }} --protocol tcp --port 443 --cidr ${{ env.RUNNER_IP }}/32
+        run: |
+          aws ec2 authorize-security-group-ingress \
+          --group-id ${{ env.SECURITY_GROUP_ID }} \
+          --protocol tcp \
+          --port 443 \
+          --cidr ${{ env.RUNNER_IP }}/32
 
   buildPackage:
     needs: createIngress
@@ -94,7 +112,11 @@ jobs:
         uses: jfrog/setup-jfrog-cli@v1
       
       - name: Upload Package to Artifactory
-        run: jfrog rt u dist/ pypi/ --build-name='${{ env.JFROG_CLI_BUILD_NAME }}' --build-number=${{ env.JFROG_CLI_BUILD_NUMBER }} --module=vmd_core
+        run: |
+          jfrog rt u dist/ pypi/ \
+            --build-name='${{ env.JFROG_CLI_BUILD_NAME }}' \
+            --build-number=${{ env.JFROG_CLI_BUILD_NUMBER }} \
+            --module=${{ needs.sanityChecks.outputs.module_name }}
 
   revokeIngress:
     needs: artifactoryUpload
@@ -103,4 +125,9 @@ jobs:
     
     steps:
       - name: Revoke Access
-        run: aws ec2 revoke-security-group-ingress --group-id ${{ secrets.SECURITY_GROUP_ID }} --protocol tcp --port 443 --cidr ${{ env.RUNNER_IP }}/32
+        run: |
+          aws ec2 revoke-security-group-ingress \
+            --group-id ${{ env.SECURITY_GROUP_ID }} \
+            --protocol tcp \
+            --port 443 \
+            --cidr ${{ env.RUNNER_IP }}/32
