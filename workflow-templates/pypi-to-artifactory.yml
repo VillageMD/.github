@@ -17,11 +17,9 @@ env:
   
 
 jobs:
-  sanityChecks:
-    name: Sanity Checks
+  pyPiToArtifactory:
+    name: PyPi to Artifactory
     runs-on: ubuntu-latest
-    outputs:
-      module_name: ${{ steps.module.outputs.name }}
 
     steps:
       - name: Get Module Name
@@ -42,12 +40,6 @@ jobs:
           echo " [ ERROR ] Release tag and version found in setup.py are not the same."
           exit 1
   
-  release:
-    needs: sanityChecks
-    name: Create Release
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Checkout code
         uses: actions/checkout@v2
 
@@ -63,12 +55,6 @@ jobs:
           draft: false
           prerelease: false
   
-  createIngress:
-    needs: release
-    name: Create Ingress Rule for Artifactory
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Configure AWS Region
         run: echo "AWS_DEFAULT_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
 
@@ -87,12 +73,6 @@ jobs:
           --port 443 \
           --cidr ${{ env.RUNNER_IP }}/32
 
-  buildPackage:
-    needs: createIngress
-    name: Build Package
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Checkout Repo
         uses: actions/checkout@v1.2.0
 
@@ -102,12 +82,6 @@ jobs:
           python3 -m build
           python3 setup.py sdist bdist_wheel
 
-  artifactoryUpload:
-    needs: buildPackage
-    name: Build Package
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Setup JFrog CLI
         uses: jfrog/setup-jfrog-cli@v1
       
@@ -116,14 +90,8 @@ jobs:
           jfrog rt u dist/ pypi/ \
             --build-name='${{ env.JFROG_CLI_BUILD_NAME }}' \
             --build-number=${{ env.JFROG_CLI_BUILD_NUMBER }} \
-            --module=${{ needs.sanityChecks.outputs.module_name }}
+            --module=${{ steps.module.outputs.name }}
 
-  revokeIngress:
-    needs: artifactoryUpload
-    name: Revoke Ingress Rule for Artifactory
-    runs-on: ubuntu-latest
-    
-    steps:
       - name: Revoke Access
         run: |
           aws ec2 revoke-security-group-ingress \
