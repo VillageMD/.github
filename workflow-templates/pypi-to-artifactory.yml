@@ -1,4 +1,9 @@
 #
+# What to change?
+#   - RELEASE_NOTES
+#   - Add DEVOPS_TF_AWS_ACCESS_KEY_ID and DEVOPS_TF_AWS_SECRET_ACCESS_KEY GitHub organization secrets to repo.
+#   - Add ARTIFACTORY_ACCESS_TOKEN GitHub organization secret to repo.
+#
 # How to trigger this workflow from git:
 #   git tag -a v1.0.0 -m "A short comment about this tag."
 #   git push origin --tags
@@ -12,7 +17,7 @@ on:
 
 env:
   RELEASE_NOTES: |
-    I've never a multi-line environment variable in GitHub Workflows:
+    I've never used a multi-line environment variable in GitHub Workflows:
     - There's a first time for every thing ;-)
   AWS_REGION: us-east-2
   AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
