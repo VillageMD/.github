@@ -17,8 +17,10 @@ on:
 
 env:
   RELEASE_NOTES: |
-    I've never used a multi-line environment variable in GitHub Workflows:
-    - There's a first time for every thing ;-)
+    Multi-line release notes can be added here:
+    - Note 1
+    - Note 2
+    - Note 3
   AWS_REGION: us-east-2
   AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
   AWS_SECRET_ACCESS_KEY: ${{ secrets.DEVOPS_TF_AWS_SECRET_ACCESS_KEY }}
@@ -31,26 +33,35 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
       - name: Get Module Name
         id: module
-        run: echo "::set-output name=name::$(cat setup.py | egrep -o \"name='(.*)'\" | awk -F \"'\" '{print $2}'"
+        run: echo "MODULE_NAME=$(cat setup.py | egrep -o "name='(.*)'" | awk -F "=" '{print $2}' | sed "s/'//g")" >> $GITHUB_ENV
+      
+      - name: Show Module Name
+        run: echo "${{ env.MODULE_NAME }}" 
       
       - name: Get Package Version
         id: package
-        run: echo "::set-output name=version::$(cat setup.py | egrep -o \"version='(.*)'\" | awk -F \"'\" '{print $2}'"
+        run: echo "PACKAGE_VERSION=$(cat setup.py | egrep -o "version='(.*)'" | awk -F "=" '{print $2}' | sed "s/'//g")" >> $GITHUB_ENV
+
+      - name: Show Package Version
+        run: echo ${{ env.PACKAGE_VERSION }}
 
       - name: Get Tag Version
         id: tag
-        run: echo ::set-output name=version::${GITHUB_REF/refs\/tags\/v/}
+        run: echo "TAG_VERSION=${GITHUB_REF/refs\/tags\/v/}" >> $GITHUB_ENV
+
+      - name: Show Tag Version
+        run: echo ${{ env.TAG_VERSION }}
 
       - name: Version Check
-        if: ${{ steps.package.outputs.version != steps.tag.outputs.version }}
+        if: ${{ env.PACKAGE_VERSION != env.TAG_VERSION }}
         run: |
           echo " [ ERROR ] Release tag and version found in setup.py are not the same."
           exit 1
-  
-      - name: Checkout code
-        uses: actions/checkout@v2
 
       - name: Create Release
         id: create_release
@@ -81,9 +92,6 @@ jobs:
           --protocol tcp \
           --port 443 \
           --cidr ${{ env.RUNNER_IP }}/32
-
-      - name: Checkout Repo
-        uses: actions/checkout@v1.2.0
 
       - name: Build Package
         run: |
