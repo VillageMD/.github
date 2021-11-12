@@ -1,0 +1,119 @@
+#
+# What to change?
+#   - RELEASE_NOTES
+#   - Add DEVOPS_TF_AWS_ACCESS_KEY_ID, DEVOPS_TF_AWS_SECRET_ACCESS_KEY, and AWS_ACCOUNT_7122 GitHub organization secrets to repo.
+#
+# How to trigger this workflow from git:
+#   git tag -a v1.0.0 -m "A short comment about this tag."
+#   git push origin --tags
+#
+name: PyPi to CodeArtifact
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  RELEASE_NOTES: |
+    Multi-line release notes can be added here:
+    - Note 1
+    - Note 2
+    - Note 3
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DEVOPS_TF_AWS_SECRET_ACCESS_KEY }}
+  CA_DOMAIN: vmd-codeartifact
+  CA_DOMAIN_OWNER: ${{ secrets.AWS_ACCOUNT_7122 }}
+  CA_REPO: pypi
+
+  
+jobs:
+  pyPiToCodeArtifact:
+    name: PyPi to CodeArtifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Get Module Name
+        id: module
+        run: echo "MODULE_NAME=$(cat setup.py | egrep -o "name='(.*)'" | awk -F "=" '{print $2}' | sed "s/'//g")" >> $GITHUB_ENV
+      
+      - name: Show Module Name
+        run: echo "${{ env.MODULE_NAME }}" 
+      
+      - name: Get Package Version
+        id: package
+        run: echo "PACKAGE_VERSION=$(cat setup.py | egrep -o "version='(.*)'" | awk -F "=" '{print $2}' | sed "s/'//g")" >> $GITHUB_ENV
+
+      - name: Show Package Version
+        run: echo ${{ env.PACKAGE_VERSION }}
+
+      - name: Get Tag Version
+        id: tag
+        run: echo "TAG_VERSION=${GITHUB_REF/refs\/tags\/v/}" >> $GITHUB_ENV
+
+      - name: Show Tag Version
+        run: echo ${{ env.TAG_VERSION }}
+
+      - name: Version Check
+        if: ${{ env.PACKAGE_VERSION != env.TAG_VERSION }}
+        run: |
+          echo " [ ERROR ] Release tag and version found in setup.py are not the same."
+          exit 1
+
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Release ${{ github.ref }}
+          body: ${{ env.RELEASE_NOTES }}
+          draft: false
+          prerelease: false
+  
+      - name: Configure AWS Region
+        run: echo "AWS_DEFAULT_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
+
+      - name: CodeArtifact Repository URL
+        run: |
+          echo "CODEARTIFACT_REPOSITORY_URL=$(aws codeartifact get-repository-endpoint \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --repository ${{ env.CA_REPO }} \
+          --format pypi --query repositoryEndpoint --output text)" >> $GITHUB_ENV
+
+      - name: CodeArtifact Auth Token
+        run: |
+          echo "CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --query authorizationToken --output text)" >> $GITHUB_ENV
+
+      - name: Twine Config
+        run: |
+          pip install twine
+          aws codeartifact login \
+          --tool twine \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --repository ${{ env.CA_REPO }}
+
+      - name: Build Package
+        run: |
+          python3 -m pip install --upgrade build
+          python3 -m build
+          python3 setup.py sdist bdist_wheel
+
+      - name: Twine Upload
+        run: |
+          twine upload \
+          --repository codeartifact \
+          dist/${{ env.MODULE_NAME }}-${{ env.TAG_VERSION }}.tar.gz
+          twine upload \
+          --repository codeartifact \
+          dist/${{ env.MODULE_NAME }}-${{ env.TAG_VERSION }}-py3-none-any.whl
