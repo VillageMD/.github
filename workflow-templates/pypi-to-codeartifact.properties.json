@@ -1,0 +1,11 @@
+{
+    "name": "PyPi to CodeArtifact",
+    "description": "Triggered by pushing a new git tag, will create release, build PyPi package, and push to CodeArtifact.",
+    "iconName": "pypi",
+    "categories": [
+        "Python"
+    ],
+    "filePatterns": [
+        "^setup.py$"
+    ]
+}
