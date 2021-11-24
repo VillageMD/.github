@@ -1,0 +1,8 @@
+{
+    "name": "PyPi From CodeArtifact",
+    "description": "Pull artifacts from CodeArtifact using pip.",
+    "iconName": "pypi",
+    "categories": [
+        "Python"
+    ]
+}

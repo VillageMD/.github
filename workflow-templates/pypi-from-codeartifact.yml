@@ -1,0 +1,57 @@
+#
+# What to change?
+#   Package(s) to install
+#   Add necessary secrets to repo
+#
+name: PyPi from CodeArtifact
+
+on:
+  pull_request:
+    branches:
+      - $default-branch
+
+env:
+  AWS_REGION: us-east-1
+  AWS_ACCESS_KEY_ID: ${{ secrets.DEVOPS_TF_AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.DEVOPS_TF_AWS_SECRET_ACCESS_KEY }}
+  CA_DOMAIN: vmd-codeartifact
+  CA_DOMAIN_OWNER: ${{ secrets.AWS_ACCOUNT_7122 }}
+  CA_REPO: pypi
+
+jobs:
+  pyPiFromCodeArtifact:
+    name: PyPi from CodeArtifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+  
+      - name: Configure AWS Region
+        run: echo "AWS_DEFAULT_REGION=${{ env.AWS_REGION }}" >> $GITHUB_ENV
+
+      - name: CodeArtifact Repository URL
+        run: |
+          echo "CODEARTIFACT_REPOSITORY_URL=$(aws codeartifact get-repository-endpoint \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --repository ${{ env.CA_REPO }} \
+          --format pypi --query repositoryEndpoint --output text)" >> $GITHUB_ENV
+
+      - name: CodeArtifact Auth Token
+        run: |
+          echo "CODEARTIFACT_AUTH_TOKEN=$(aws codeartifact get-authorization-token \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --query authorizationToken --output text)" >> $GITHUB_ENV
+
+      - name: Pip Config
+        run: |
+          aws codeartifact login \
+          --tool pip \
+          --domain ${{ env.CA_DOMAIN }} \
+          --domain-owner ${{ env.CA_DOMAIN_OWNER }} \
+          --repository ${{ env.CA_REPO }}
+
+      - name: Pip Install
+        run: pip install vmd-core
