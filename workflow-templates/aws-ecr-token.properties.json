@@ -1,0 +1,5 @@
+{
+    "name": "Pull AWS ECR Image",
+    "description": "Obtains temporary AWS authentication token to pull an ECR image and run actions on it",
+    "iconName": "aws-ecs"
+}
