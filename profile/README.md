@@ -1,4 +1,4 @@
-## Hi there 👋
+## Begin your journey to VillageMD's GitHub [here](https://villagemd.atlassian.net/wiki/spaces/DAA/pages/61603865/Getting+Started) 👋
 
 <!--
 
